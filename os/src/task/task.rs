@@ -7,6 +7,8 @@ use super::TaskContext;
 pub struct TaskControlBlock {
     /// The task status in it's lifecycle
     pub task_status: TaskStatus,
+    /// The sys_call times from current task
+    pub sys_call_times: [usize; 5],
     /// The task context
     pub task_cx: TaskContext,
 }

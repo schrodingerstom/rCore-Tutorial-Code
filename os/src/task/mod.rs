@@ -9,6 +9,17 @@
 //! Be careful when you see `__switch` ASM function in `switch.S`. Control flow around this function
 //! might not be what you expect.
 
+/// write syscall
+const SYSCALL_WRITE: usize = 64;
+/// exit syscall
+const SYSCALL_EXIT: usize = 93;
+/// yield syscall
+const SYSCALL_YIELD: usize = 124;
+/// gettime syscall
+const SYSCALL_GET_TIME: usize = 169;
+/// trace syscall
+const SYSCALL_TRACE: usize = 410;
+
 mod context;
 mod switch;
 #[allow(clippy::module_inception)]
@@ -53,6 +64,7 @@ lazy_static! {
         let num_app = get_num_app();
         let mut tasks = [TaskControlBlock {
             task_cx: TaskContext::zero_init(),
+            sys_call_times: [0; 5],
             task_status: TaskStatus::UnInit,
         }; MAX_APP_NUM];
         for (i, task) in tasks.iter_mut().enumerate() {
@@ -135,6 +147,34 @@ impl TaskManager {
             panic!("All applications completed!");
         }
     }
+
+    /// Record a sys_call from a task
+    fn record_syscall(&self, syscall_id: usize) {
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        match syscall_id {
+            SYSCALL_WRITE => inner.tasks[current].sys_call_times[0] += 1,
+            SYSCALL_EXIT => inner.tasks[current].sys_call_times[1] += 1,
+            SYSCALL_YIELD => inner.tasks[current].sys_call_times[2] += 1,
+            SYSCALL_GET_TIME => inner.tasks[current].sys_call_times[3] += 1,
+            SYSCALL_TRACE => inner.tasks[current].sys_call_times[4] += 1,
+            _ => panic!("Unsupported syscall_id!")
+        }
+    }
+
+    /// Report sys_call times of current task
+    fn report_syscall(&self, syscall_id: usize) -> usize {
+        let inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        match syscall_id {
+            SYSCALL_WRITE => inner.tasks[current].sys_call_times[0],
+            SYSCALL_EXIT => inner.tasks[current].sys_call_times[1],
+            SYSCALL_YIELD => inner.tasks[current].sys_call_times[2],
+            SYSCALL_GET_TIME => inner.tasks[current].sys_call_times[3],
+            SYSCALL_TRACE => inner.tasks[current].sys_call_times[4],
+            _ => panic!("Unsupported syscall_id!")
+        }
+    }
 }
 
 /// Run the first task in task list.
@@ -168,4 +208,14 @@ pub fn suspend_current_and_run_next() {
 pub fn exit_current_and_run_next() {
     mark_current_exited();
     run_next_task();
+}
+
+/// Record a sys_call from a task
+pub fn record_syscall(syscall_id: usize) {
+    TASK_MANAGER.record_syscall(syscall_id);
+}
+
+/// Report sys_call times of current task
+pub fn report_syscall(syscall_id: usize) -> usize {
+    TASK_MANAGER.report_syscall(syscall_id)
 }
