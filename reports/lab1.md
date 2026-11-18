@@ -88,4 +88,4 @@
     trap 由硬件发生，cpu 在执行指令时会检查是否发生 trap，如果发生会由硬件自动保存 `sstatus, sepc` 等信息，然后自动从 U 态进入 S 态（有时也会进入 M 态），然后跳转到 `stvec` 指向的地址。所以，事实上从 `__alltraps` 的第一行代码就已经在 S 态了。
 
 ## Honor Code
-- AI 使用记录见 
+- AI 使用记录见 [lab1-session.v4.jsonl](./lab1-session.v4.jsonl)
