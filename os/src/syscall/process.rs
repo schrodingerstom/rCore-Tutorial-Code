@@ -1,5 +1,8 @@
 //! Process management syscalls
-use crate::task::{change_program_brk, exit_current_and_run_next, suspend_current_and_run_next};
+use core::mem::size_of;
+use crate::mm::translated_byte_buffer;
+use crate::timer::get_time_us;
+use crate::task::{change_program_brk, current_user_token, exit_current_and_run_next, suspend_current_and_run_next};
 
 #[repr(C)]
 #[derive(Debug)]
@@ -27,7 +30,22 @@ pub fn sys_yield() -> isize {
 /// HINT: What if [`TimeVal`] is splitted by two pages ?
 pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
     trace!("kernel: sys_get_time");
-    -1
+    const BYTELEN: usize = size_of::<usize>() / size_of::<u8>();
+    let us = get_time_us();
+    let mut info = [0u8; BYTELEN * 2];
+    info[0..BYTELEN].copy_from_slice(&(us / 1_000_000).to_ne_bytes());
+    info[BYTELEN..BYTELEN * 2].copy_from_slice(&(us % 1_000_000).to_ne_bytes());
+
+    let token = current_user_token();
+    let target = translated_byte_buffer(token,
+                                                    _ts as *const u8,
+                                                    BYTELEN * 2);
+    let mut start = 0;
+    for seg in target {
+        seg.copy_from_slice(&info[start..start + seg.len()]);
+        start = start + seg.len();
+    }
+    0
 }
 
 /// TODO: Finish sys_trace to pass testcases
