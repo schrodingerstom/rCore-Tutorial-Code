@@ -70,6 +70,10 @@ impl PageTableEntry {
     pub fn executable(&self) -> bool {
         (self.flags() & PTEFlags::X) != PTEFlags::empty()
     }
+    /// The page is accessible in user mode
+    pub fn user_valid(&self) -> bool {
+        (self.flags() & PTEFlags::U) != PTEFlags::empty()
+    }
 }
 
 /// page table structure
@@ -178,4 +182,61 @@ pub fn translated_byte_buffer(token: usize, ptr: *const u8, len: usize) -> Vec<&
         start = end_va.into();
     }
     v
+}
+
+/// Translate&Copy a ptr[u8] array with LENGTH len to a mutable u8 Vec through page table
+/// IN USER MODE
+pub fn translated_byte_buffer_user(token: usize, ptr: *const u8, len: usize, access: PTEFlags) -> Option<Vec<&'static mut [u8]>> {
+    let page_table = PageTable::from_token(token);
+    let mut start = ptr as usize;
+    let end = start + len;
+    let mut v = Vec::new();
+    while start < end {
+        let start_va = VirtAddr::from(start);
+        let mut vpn = start_va.floor();
+        let pte = page_table.translate(vpn);
+        if pte.is_none() {
+            return None;
+        }
+        let pte = pte.unwrap();
+        if pte.user_valid() == false {
+            error!("VirtAddr {:?} is unaccessible in user mode", start);
+            return None;
+        }
+        match access {
+            PTEFlags::R => {
+                if pte.readable() == false {
+                    error!("VirtAddr {:?} is not readable in user mode", start);
+                    return None;
+                }
+            },
+            PTEFlags::W => {
+                if pte.writable() == false {
+                    error!("VirtAddr {:?} is not writable in user mode", start);
+                    return None;
+                }
+            },
+            PTEFlags::X => {
+                if pte.executable() == false {
+                    error!("VirtAddr {:?} is not executable in user mode", start);
+                    return None;
+                }
+            },
+            _ => {
+                error!("Invalid access type to VirtAddr {:?}", start);
+                return None;
+            }
+        }
+        let ppn = pte.ppn();
+        vpn.step();
+        let mut end_va: VirtAddr = vpn.into();
+        end_va = end_va.min(VirtAddr::from(end));
+        if end_va.page_offset() == 0 {
+            v.push(&mut ppn.get_bytes_array()[start_va.page_offset()..]);
+        } else {
+            v.push(&mut ppn.get_bytes_array()[start_va.page_offset()..end_va.page_offset()]);
+        }
+        start = end_va.into();
+    }
+    Some(v)
 }

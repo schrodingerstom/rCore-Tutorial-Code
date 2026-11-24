@@ -2,9 +2,25 @@
 use super::TaskContext;
 use crate::config::TRAP_CONTEXT_BASE;
 use crate::mm::{
-    kernel_stack_position, MapPermission, MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE,
+    KERNEL_SPACE, MapPermission, MemorySet, PhysPageNum, VirtAddr, kernel_stack_position,
 };
 use crate::trap::{trap_handler, TrapContext};
+
+const SYSCALL_WRITE: usize = 64;
+/// exit syscall
+const SYSCALL_EXIT: usize = 93;
+/// yield syscall
+const SYSCALL_YIELD: usize = 124;
+/// gettime syscall
+const SYSCALL_GET_TIME: usize = 169;
+/// sbrk syscall
+const SYSCALL_SBRK: usize = 214;
+/// munmap syscall
+const SYSCALL_MUNMAP: usize = 215;
+/// mmap syscall
+const SYSCALL_MMAP: usize = 222;
+/// trace syscall
+const SYSCALL_TRACE: usize = 410;
 
 /// The task control block (TCB) of a task.
 pub struct TaskControlBlock {
@@ -28,6 +44,9 @@ pub struct TaskControlBlock {
 
     /// Program break
     pub program_brk: usize,
+
+    /// Times of each syscall
+    pub syscall_times: [usize; 8],
 }
 
 impl TaskControlBlock {
@@ -63,6 +82,7 @@ impl TaskControlBlock {
             base_size: user_sp,
             heap_bottom: user_sp,
             program_brk: user_sp,
+            syscall_times: [0usize; 8],
         };
         // prepare TrapContext in user space
         let trap_cx = task_control_block.get_trap_cx();
@@ -95,6 +115,52 @@ impl TaskControlBlock {
         } else {
             None
         }
+    }
+    /// record a system call of id
+    pub fn record_syscall(&mut self, syscall_id: usize) {
+        match syscall_id {
+            SYSCALL_WRITE => self.syscall_times[0] += 1,
+            SYSCALL_EXIT => self.syscall_times[1] += 1,
+            SYSCALL_YIELD => self.syscall_times[2] += 1,
+            SYSCALL_GET_TIME => self.syscall_times[3] += 1,
+            SYSCALL_TRACE => self.syscall_times[4] += 1,
+            SYSCALL_MMAP => self.syscall_times[5] += 1,
+            SYSCALL_MUNMAP => self.syscall_times[6] += 1,
+            SYSCALL_SBRK => self.syscall_times[7] += 1,
+            _ => panic!("Unsupported syscall_id: {}", syscall_id),
+        }
+    }
+    /// report times of syscall_id
+    pub fn report_syscall(&self, syscall_id: usize) -> usize {
+        match syscall_id {
+            SYSCALL_WRITE => self.syscall_times[0],
+            SYSCALL_EXIT => self.syscall_times[1],
+            SYSCALL_YIELD => self.syscall_times[2],
+            SYSCALL_GET_TIME => self.syscall_times[3],
+            SYSCALL_TRACE => self.syscall_times[4],
+            SYSCALL_MMAP => self.syscall_times[5],
+            SYSCALL_MUNMAP => self.syscall_times[6],
+            SYSCALL_SBRK => self.syscall_times[7],
+            _ => panic!("Unsupported syscall_id: {}", syscall_id),
+        }
+    }
+
+    /// Ask for PhysMem for VirtAddr [_start, _start + _len)
+    pub fn sys_mmap(&mut self, _start: usize, _len: usize, _port: usize) -> isize {
+        if self.memory_set.check_available(VirtAddr(_start),
+            VirtAddr(_start + _len)) == false {
+            error!("already used VirtAddr in [{:?}, {:?})", _start, _start + _len);
+            return -1;
+        }
+        self.memory_set.insert_framed_area(VirtAddr(_start),
+            VirtAddr(_start + _len),
+            MapPermission::from_bits((_port as u8) << 1).unwrap() | MapPermission::U);
+        0
+    }
+
+    /// Unmap VirtAddr [start, start + len)
+    pub fn munmap(&mut self, _start: usize, _len: usize) -> isize {
+        self.memory_set.unmap(VirtAddr(_start).floor(), VirtAddr(_start + _len).ceil())
     }
 }
 

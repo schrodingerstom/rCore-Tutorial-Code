@@ -153,6 +153,33 @@ impl TaskManager {
             panic!("All applications completed!");
         }
     }
+
+    /// Record a syscall by current task
+    fn record_syscall(&self, syscall_id: usize) {
+        let mut inner = self.inner.exclusive_access();
+        let current_task = inner.current_task;
+        inner.tasks[current_task].record_syscall(syscall_id);
+    }
+
+    /// Report times of syscall_id by current task
+    fn report_syscall(&self, syscall_id: usize) -> usize {
+        let inner = self.inner.exclusive_access();
+        inner.tasks[inner.current_task].report_syscall(syscall_id)
+    }
+
+    /// Ask for PhysMem for VirtAddr [_start, _start + _len)
+    fn sys_mmap(&self, _start: usize, _len: usize, _port: usize) -> isize {
+        let mut inner = self.inner.exclusive_access();
+        let current_task = inner.current_task;
+        inner.tasks[current_task].sys_mmap(_start, _len, _port)
+    }
+
+    /// Unmap VirtAddr [start, start + len)
+    fn sys_munmap(&self, start: usize, len: usize) -> isize {
+        let mut inner = self.inner.exclusive_access();
+        let current_task = inner.current_task;
+        inner.tasks[current_task].munmap(start, len)
+    }
 }
 
 /// Run the first task in task list.
@@ -201,4 +228,24 @@ pub fn current_trap_cx() -> &'static mut TrapContext {
 /// Change the current 'Running' task's program break
 pub fn change_program_brk(size: i32) -> Option<usize> {
     TASK_MANAGER.change_current_program_brk(size)
+}
+
+/// Record syscall of current task
+pub fn record_syscall(syscall_id: usize) {
+    TASK_MANAGER.record_syscall(syscall_id);
+}
+
+/// Report syscall_id times of current task
+pub fn report_syscall(syscall_id: usize) -> usize {
+    TASK_MANAGER.report_syscall(syscall_id)
+}
+
+/// Ask for PhysMem for VirtAddr [_start, _start + _len)
+pub fn mmap(_start: usize, _len: usize, _port: usize) -> isize {
+    TASK_MANAGER.sys_mmap(_start, _len, _port)
+}
+
+/// Unmap VirtAddr [start, start + len)
+pub fn munmap(start: usize, len: usize) -> isize {
+    TASK_MANAGER.sys_munmap(start, len)
 }

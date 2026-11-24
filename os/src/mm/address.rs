@@ -227,6 +227,12 @@ where
     pub fn get_end(&self) -> T {
         self.r
     }
+    fn _intersect(&self, start: T, end: T) -> bool {
+        !(end <= self.l || self.r <= start)
+    }
+    pub fn intersect(&self, other: &Self) -> bool {
+        self._intersect(other.l, other.r)
+    }
 }
 impl<T> IntoIterator for SimpleRange<T>
 where
