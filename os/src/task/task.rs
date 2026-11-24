@@ -2,7 +2,7 @@
 use super::TaskContext;
 use super::{kstack_alloc, pid_alloc, KernelStack, PidHandle};
 use crate::config::TRAP_CONTEXT_BASE;
-use crate::mm::{MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE};
+use crate::mm::{MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE, MapPermission};
 use crate::sync::UPSafeCell;
 use crate::trap::{trap_handler, TrapContext};
 use alloc::sync::{Arc, Weak};
@@ -12,6 +12,8 @@ use core::cell::RefMut;
 /// Task control block structure
 ///
 /// Directly save the contents that will not change during running
+
+/// The task control block (TCB) of a task.
 pub struct TaskControlBlock {
     // Immutable
     /// Process identifier
@@ -235,6 +237,26 @@ impl TaskControlBlock {
         } else {
             None
         }
+    }
+
+    /// Ask for PhysMem for VirtAddr [_start, _start + _len)
+    pub fn sys_mmap(&self, _start: usize, _len: usize, _port: usize) -> isize {
+        let mut inner = self.inner.exclusive_access();
+        if inner.memory_set.check_available(VirtAddr(_start),
+            VirtAddr(_start + _len)) == false {
+            error!("already used VirtAddr in [{:?}, {:?})", _start, _start + _len);
+            return -1;
+        }
+        inner.memory_set.insert_framed_area(VirtAddr(_start),
+            VirtAddr(_start + _len),
+            MapPermission::from_bits((_port as u8) << 1).unwrap() | MapPermission::U);
+        0
+    }
+
+    /// Unmap VirtAddr [start, start + len)
+    pub fn sys_munmap(&self, _start: usize, _len: usize) -> isize {
+        let mut inner = self.inner.exclusive_access();
+        inner.memory_set.unmap(VirtAddr(_start).floor(), VirtAddr(_start + _len).ceil())
     }
 }
 

@@ -109,3 +109,21 @@ pub fn schedule(switched_task_cx_ptr: *mut TaskContext) {
         __switch(switched_task_cx_ptr, idle_task_cx_ptr);
     }
 }
+
+/// Ask for PhysMem for VirtAddr [_start, _start + _len)
+pub fn mmap(_start: usize, _len: usize, _port: usize) -> isize {
+    if let Some(task) = PROCESSOR.exclusive_access().current() {
+        task.sys_mmap(_start, _len, _port)
+    } else {
+        -1
+    }
+}
+
+/// Unmap VirtAddr [start, start + len)
+pub fn munmap(start: usize, len: usize) -> isize {
+    if let Some(task) = PROCESSOR.exclusive_access().current() {
+        task.sys_munmap(start, len)
+    } else {
+        -1
+    }
+}

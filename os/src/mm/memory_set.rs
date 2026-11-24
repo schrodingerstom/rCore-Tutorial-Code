@@ -300,6 +300,64 @@ impl MemorySet {
             false
         }
     }
+
+
+    /// check if is a available vpn range
+    fn _check_available(&self, vpn_range: &VPNRange) -> bool {
+        for rng in &self.areas {
+            if rng.vpn_range.intersect(vpn_range) {
+                return false;
+            }
+        }
+        true
+    }
+    /// check if is an available virtaddr range
+    pub fn check_available(&self, start: VirtAddr, end: VirtAddr) -> bool {
+        self._check_available(&VPNRange::new(
+            start.floor(),
+            end.ceil()
+        ))
+    }
+
+    /// free VirtPage in [start, end)
+    pub fn unmap(&mut self, start: VirtPageNum, end: VirtPageNum) -> isize {
+        // reallocate some page, is it valid?
+        // it's not valid, the data isn't moved
+
+        // permission check ?
+        let mut got_len = 0usize;
+        for area in &self.areas {
+            let l = core::cmp::max(area.vpn_range.get_start(), start);
+            let r = core::cmp::min(area.vpn_range.get_end(), end);
+            if l.0 < r.0 {
+                if (area.map_perm & MapPermission::U) == MapPermission::empty() {
+                    error!("invalid access to VPNRange ({:?}, {:?}) in user mode", start, end);
+                    return -1;
+                }
+                got_len = got_len + (r.0 - l.0);
+            }
+        }
+        if got_len < end.0 - start.0 {
+            error!("unmap some unmaped pages!");
+            return -1;
+        }
+        let mut tail = Vec::new();
+        for area in &mut self.areas {
+            if let Some(latter) = area.unmap_range(&mut self.page_table, start, end) {
+                tail.push(latter);
+            }
+        }
+        self.areas.append(&mut tail);
+        for i in 0..self.areas.len() {
+            if i >= self.areas.len() {
+                break;
+            }
+            if self.areas[i].vpn_range.get_start() == self.areas[i].vpn_range.get_end() {
+                self.areas.swap_remove(i);
+            }
+        }
+        0
+    }
 }
 /// map area structure, controls a contiguous piece of virtual memory
 pub struct MapArea {
@@ -398,6 +456,57 @@ impl MapArea {
                 break;
             }
             current_vpn.step();
+        }
+    }
+
+    /// unmap an arbitrary range from current map_area
+    /// assume all intersect part is mapped
+    /// when at beginning or end return None
+    /// when amid current return Some(latter)
+    pub fn unmap_range(&mut self, page_table: &mut PageTable, start: VirtPageNum, end: VirtPageNum)
+            -> Option<Self> {
+        let l_point_dead = start <= self.vpn_range.get_start() && self.vpn_range.get_start() < end;
+        let r_point_dead = start <= self.vpn_range.get_end() && self.vpn_range.get_end() < end;
+        if l_point_dead && r_point_dead {
+            self.unmap(page_table);
+            self.vpn_range = VPNRange::new(self.vpn_range.get_start(), self.vpn_range.get_start());
+            return None;
+        } else if l_point_dead {
+            for vpn in self.vpn_range {
+                if start <= vpn && vpn < end {
+                    self.unmap_one(page_table, vpn);
+                }
+            }
+            self.vpn_range = VPNRange::new(end, self.vpn_range.get_end());
+            return None;
+        } else if r_point_dead {
+            for vpn in self.vpn_range {
+                if start <= vpn && vpn < end {
+                    self.unmap_one(page_table, vpn);
+                }
+            }
+            self.vpn_range = VPNRange::new(self.vpn_range.get_start(), start);
+            return None;
+        } else {
+            if start == end || self.vpn_range.intersect(&VPNRange::new(start, end)) == false {
+                return None;
+            }
+            let mut latter = Self::new(
+                VirtAddr::from(end),
+                VirtAddr::from(self.vpn_range.get_end()),
+                self.map_type,
+                self.map_perm
+            );
+            for vpn in self.vpn_range {
+                if start <= vpn && vpn < end {
+                    self.unmap_one(page_table, vpn);
+                }
+            }
+            if self.map_type == MapType::Framed {
+                latter.data_frames = self.data_frames.split_off(&end);
+            }
+            self.vpn_range = VPNRange::new(self.vpn_range.get_start(), start);
+            return Some(latter);
         }
     }
 }

@@ -9,6 +9,11 @@ use crate::{
         suspend_current_and_run_next,
     },
 };
+use core::mem::size_of;
+
+use crate::mm::{PTEFlags, translated_byte_buffer_user, VirtAddr};
+use crate::timer::get_time_us;
+use crate::task::{mmap, munmap};
 
 #[repr(C)]
 #[derive(Debug)]
@@ -106,29 +111,51 @@ pub fn sys_waitpid(pid: isize, exit_code_ptr: *mut i32) -> isize {
 /// HINT: You might reimplement it with virtual memory management.
 /// HINT: What if [`TimeVal`] is splitted by two pages ?
 pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
-    trace!(
-        "kernel:pid[{}] sys_get_time NOT IMPLEMENTED",
-        current_task().unwrap().pid.0
-    );
-    -1
+    trace!("kernel: sys_get_time");
+    const BYTELEN: usize = size_of::<usize>() / size_of::<u8>();
+    let us = get_time_us();
+    let mut info = [0u8; BYTELEN * 2];
+    info[0..BYTELEN].copy_from_slice(&(us / 1_000_000).to_ne_bytes());
+    info[BYTELEN..BYTELEN * 2].copy_from_slice(&(us % 1_000_000).to_ne_bytes());
+
+    let token = current_user_token();
+    if let Some(target) = translated_byte_buffer_user(token,
+                                                    _ts as *const u8,
+                                                    BYTELEN * 2,
+                                                PTEFlags::W) {
+        let mut start = 0;
+        for seg in target {
+            seg.copy_from_slice(&info[start..start + seg.len()]);
+            start = start + seg.len();
+        }
+        0
+    } else {
+        -1
+    }
 }
 
 /// YOUR JOB: Implement mmap.
 pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
-    trace!(
-        "kernel:pid[{}] sys_mmap NOT IMPLEMENTED",
-        current_task().unwrap().pid.0
-    );
-    -1
+    trace!("kernel: sys_mmap");
+    if VirtAddr(_start).aligned() == false {
+        error!("kernel: VirtAddr {:?} unaligned", _start);
+        return -1;
+    }
+    if ((_port & !0x7) != 0) || ((_port & 0x7) == 0) {
+        error!("kernel: invalid port request {:?}", _port);
+        return -1;
+    }
+    mmap(_start, _len, _port)
 }
 
 /// YOUR JOB: Implement munmap.
 pub fn sys_munmap(_start: usize, _len: usize) -> isize {
-    trace!(
-        "kernel:pid[{}] sys_munmap NOT IMPLEMENTED",
-        current_task().unwrap().pid.0
-    );
-    -1
+    trace!("kernel: sys_munmap");
+    if VirtAddr(_start).aligned() == false {
+        error!("kernel: VirtAddr {:?} unaligned", _start);
+        return -1;
+    }
+    munmap(_start, _len)
 }
 
 /// change data segment size
