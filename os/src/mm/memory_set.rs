@@ -334,6 +334,9 @@ impl MemorySet {
     }
 
     /// really map the virtaddr
+    /// 
+    /// talked to deepseek and understood page_table::translate return value 
+    /// and Store/PageFault meaning
     pub fn lazy_map(&mut self, virtaddr: VirtAddr) -> isize {
         let vpn = VirtPageNum::from(virtaddr);
         debug!("[kernel] lazy_map, vpn = {:?}", vpn);
