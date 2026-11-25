@@ -4,6 +4,7 @@ use super::{frame_alloc, FrameTracker, PhysPageNum, StepByOne, VirtAddr, VirtPag
 use alloc::vec;
 use alloc::vec::Vec;
 use bitflags::*;
+use crate::task::lazy_map;
 
 bitflags! {
     /// page table entry flags
@@ -170,7 +171,14 @@ pub fn translated_byte_buffer(token: usize, ptr: *const u8, len: usize) -> Vec<&
     while start < end {
         let start_va = VirtAddr::from(start);
         let mut vpn = start_va.floor();
-        let ppn = page_table.translate(vpn).unwrap().ppn();
+        let mut pte = page_table.translate(vpn);
+        if pte.is_none() {
+            if lazy_map(start_va.0) == -1 {
+                panic!("Illegal virtaddr {:?}", start_va);
+            }
+            pte = page_table.translate(vpn);
+        }
+        let ppn = pte.unwrap().ppn();
         vpn.step();
         let mut end_va: VirtAddr = vpn.into();
         end_va = end_va.min(VirtAddr::from(end));
@@ -194,9 +202,13 @@ pub fn translated_byte_buffer_user(token: usize, ptr: *const u8, len: usize, acc
     while start < end {
         let start_va = VirtAddr::from(start);
         let mut vpn = start_va.floor();
-        let pte = page_table.translate(vpn);
+        let mut pte = page_table.translate(vpn);
         if pte.is_none() {
-            return None;
+            if lazy_map(start_va.0) == -1 {
+                error!("Illegal virtaddr {:?}", start_va);
+                return None;
+            }
+            pte = page_table.translate(vpn);
         }
         let pte = pte.unwrap();
         if pte.user_valid() == false {

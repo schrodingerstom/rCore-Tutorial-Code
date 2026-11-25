@@ -79,8 +79,10 @@ pub fn trap_handler() -> ! {
         }
         Trap::Exception(Exception::StorePageFault)
         | Trap::Exception(Exception::LoadPageFault) => {
+            debug!("[kernel] PageFault, stval = {:?}", stval);
             if lazy_map(stval) == -1 {
                 println!("[kernel] PageFault in application, bad addr = {:#x}, bad instruction = {:#x}, kernel killed it.", stval, cx.sepc);
+                exit_current_and_run_next();
             }
         }
         Trap::Exception(Exception::IllegalInstruction) => {

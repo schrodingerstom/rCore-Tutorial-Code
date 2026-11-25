@@ -336,8 +336,15 @@ impl MemorySet {
     /// really map the virtaddr
     pub fn lazy_map(&mut self, virtaddr: VirtAddr) -> isize {
         let vpn = VirtPageNum::from(virtaddr);
+        debug!("[kernel] lazy_map, vpn = {:?}", vpn);
+        if self.page_table.translate(vpn).is_some() {
+            return -1;
+        }
         for area in &mut self.areas {
             if area.vpn_range.get_start() <= vpn && vpn < area.vpn_range.get_end() {
+                debug!("[kernel] area.vpn_range = ({:?}, {:?})",
+                        area.vpn_range.get_start(),
+                        area.vpn_range.get_end());
                 area.map_one(&mut self.page_table, vpn);
                 return 0;
             }
