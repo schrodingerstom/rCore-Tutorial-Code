@@ -178,7 +178,13 @@ impl TaskManager {
     fn sys_munmap(&self, start: usize, len: usize) -> isize {
         let mut inner = self.inner.exclusive_access();
         let current_task = inner.current_task;
-        inner.tasks[current_task].munmap(start, len)
+        inner.tasks[current_task].sys_munmap(start, len)
+    }
+
+    fn lazy_map(&self, virtaddr: usize) -> isize {
+        let mut inner = self.inner.exclusive_access();
+        let current_task = inner.current_task;
+        inner.tasks[current_task].lazy_map(virtaddr)
     }
 }
 
@@ -248,4 +254,9 @@ pub fn mmap(_start: usize, _len: usize, _port: usize) -> isize {
 /// Unmap VirtAddr [start, start + len)
 pub fn munmap(start: usize, len: usize) -> isize {
     TASK_MANAGER.sys_munmap(start, len)
+}
+
+/// really map the VirtAddr
+pub fn lazy_map(virtaddr: usize) -> isize {
+    TASK_MANAGER.lazy_map(virtaddr)
 }

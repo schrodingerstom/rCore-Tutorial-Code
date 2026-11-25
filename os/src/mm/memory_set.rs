@@ -281,8 +281,20 @@ impl MemorySet {
         ))
     }
 
+    /// LAZY mmap VirtAddr [start_va, end_va)
+    pub fn mmap(
+        &mut self,
+        start_va: VirtAddr,
+        end_va: VirtAddr,
+        permission: MapPermission,
+    ) {
+        self.areas.push(
+            MapArea::new(start_va, end_va, MapType::Framed, permission),
+        );
+    }
+
     /// free VirtPage in [start, end)
-    pub fn unmap(&mut self, start: VirtPageNum, end: VirtPageNum) -> isize {
+    pub fn munmap(&mut self, start: VirtPageNum, end: VirtPageNum) -> isize {
         // reallocate some page, is it valid?
         // it's not valid, the data isn't moved
 
@@ -319,6 +331,18 @@ impl MemorySet {
             }
         }
         0
+    }
+
+    /// really map the virtaddr
+    pub fn lazy_map(&mut self, virtaddr: VirtAddr) -> isize {
+        let vpn = VirtPageNum::from(virtaddr);
+        for area in &mut self.areas {
+            if area.vpn_range.get_start() <= vpn && vpn < area.vpn_range.get_end() {
+                area.map_one(&mut self.page_table, vpn);
+                return 0;
+            }
+        }
+        -1
     }
 }
 /// map area structure, controls a contiguous piece of virtual memory
@@ -362,6 +386,9 @@ impl MapArea {
     }
     #[allow(unused)]
     pub fn unmap_one(&mut self, page_table: &mut PageTable, vpn: VirtPageNum) {
+        if page_table.translate(vpn).is_none() {
+            return;
+        }
         if self.map_type == MapType::Framed {
             self.data_frames.remove(&vpn);
         }

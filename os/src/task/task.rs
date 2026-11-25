@@ -152,15 +152,20 @@ impl TaskControlBlock {
             error!("already used VirtAddr in [{:?}, {:?})", _start, _start + _len);
             return -1;
         }
-        self.memory_set.insert_framed_area(VirtAddr(_start),
+        self.memory_set.mmap(VirtAddr(_start),
             VirtAddr(_start + _len),
             MapPermission::from_bits((_port as u8) << 1).unwrap() | MapPermission::U);
         0
     }
 
     /// Unmap VirtAddr [start, start + len)
-    pub fn munmap(&mut self, _start: usize, _len: usize) -> isize {
-        self.memory_set.unmap(VirtAddr(_start).floor(), VirtAddr(_start + _len).ceil())
+    pub fn sys_munmap(&mut self, _start: usize, _len: usize) -> isize {
+        self.memory_set.munmap(VirtAddr(_start).floor(), VirtAddr(_start + _len).ceil())
+    }
+
+    /// really map the virtaddr
+    pub fn lazy_map(&mut self, virtaddr: usize) -> isize {
+        self.memory_set.lazy_map(VirtAddr(virtaddr))
     }
 }
 
