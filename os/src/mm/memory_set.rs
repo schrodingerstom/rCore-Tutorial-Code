@@ -395,7 +395,11 @@ impl MapArea {
     }
     #[allow(unused)]
     pub fn unmap_one(&mut self, page_table: &mut PageTable, vpn: VirtPageNum) {
-        if page_table.translate(vpn).is_none() {
+        if let Some(pte) = page_table.translate(vpn) {
+            if pte.is_valid() == false {
+                return;
+            }
+        } else {
             return;
         }
         if self.map_type == MapType::Framed {
@@ -423,9 +427,6 @@ impl MapArea {
     }
     #[allow(unused)]
     pub fn append_to(&mut self, page_table: &mut PageTable, new_end: VirtPageNum) {
-        for vpn in VPNRange::new(self.vpn_range.get_end(), new_end) {
-            self.map_one(page_table, vpn)
-        }
         self.vpn_range = VPNRange::new(self.vpn_range.get_start(), new_end);
     }
     /// data: start-aligned but maybe with shorter length
